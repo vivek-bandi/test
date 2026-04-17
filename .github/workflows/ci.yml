@@ -1,0 +1,65 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_ENV: test
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: disaster_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      mongodb:
+        image: mongo:7-jammy
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ connectionStatus: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 27017:27017
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Show repository structure
+        run: find . -maxdepth 2 -type f | sort
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - name: Install Backend Dependencies
+        run: cd backend && npm ci
+      - name: Run Backend Tests
+        run: cd backend && npm test
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_DB: disaster_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          MONGO_URI: mongodb://localhost:27017/disaster_test
+          JWT_SECRET: test-secret-key-32-chars-minimum
+          JWT_REFRESH_SECRET: test-refresh-secret-32chars
+      - name: Install Frontend Dependencies
+        run: cd frontend && npm install
+      - name: Build React App
+        run: cd frontend && npm run build
